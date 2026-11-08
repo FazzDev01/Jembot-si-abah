@@ -1,0 +1,236 @@
+name: Build APK
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Buat file proyek
+        run: |
+          mkdir -p app
+          cat > app/build.gradle.kts <<'__EOF__'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.arpalsu.game"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.arpalsu.game"
+                  minSdk = 24
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          __EOF__
+          mkdir -p app/src/main
+          cat > app/src/main/AndroidManifest.xml <<'__EOF__'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+              <application
+                  android:label="AR Palsu"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:screenOrientation="portrait"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          __EOF__
+          mkdir -p app/src/main/assets
+          cat > app/src/main/assets/index.html <<'__EOF__'
+          <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+          <style>html,body{margin:0;height:100%;background:#111;overflow:hidden;touch-action:none}
+          video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}canvas{position:fixed;inset:0}</style></head>
+          <body><video id="v" autoplay playsinline muted></video><canvas id="c"></canvas><script>
+          const cv=document.getElementById('c'),g=cv.getContext('2d'),vid=document.getElementById('v');
+          let W,H,f,msg='';
+          function rs(){W=cv.width=innerWidth;H=cv.height=innerHeight;f=H*0.85}rs();addEventListener('resize',rs);
+          try{navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}).then(s=>{vid.srcObject=s}).catch(e=>{msg='Kamera gagal: '+e.name})}catch(e){msg='Kamera tidak tersedia'}
+          let R=[1,0,0,0,1,0,0,0,1],M=R.slice(),rc=1,rsn=0,first=true,hh=1.3,ch=null;
+          const joy={id:null,dx:0,dy:0,kx:0,ky:0};
+          function applyRot(){M=[rc*R[0]-rsn*R[3],rc*R[1]-rsn*R[4],rc*R[2]-rsn*R[5],rsn*R[0]+rc*R[3],rsn*R[1]+rc*R[4],rsn*R[2]+rc*R[5],R[6],R[7],R[8]]}
+          function resetHeading(){rc=1;rsn=0;applyRot();let fx=-M[2],fy=-M[5];if(Math.hypot(fx,fy)<0.2){fx=M[1];fy=M[4]}const ph=Math.PI/2-Math.atan2(fy,fx);rc=Math.cos(ph);rsn=Math.sin(ph);applyRot()}
+          function setRot(...a){R=a;if(first){first=false;resetHeading()}else applyRot()}
+          function toDev(p){return[M[0]*p[0]+M[3]*p[1]+M[6]*p[2],M[1]*p[0]+M[4]*p[1]+M[7]*p[2],M[2]*p[0]+M[5]*p[1]+M[8]*p[2]]}
+          function pr(v){return[W/2+f*v[0]/-v[2],H/2-f*v[1]/-v[2]]}
+          const NR=-0.05;
+          function seg(a,b){let A=toDev(a),B=toDev(b);if(A[2]>NR&&B[2]>NR)return;
+           if(A[2]>NR){const t=(NR-A[2])/(B[2]-A[2]);A=[A[0]+t*(B[0]-A[0]),A[1]+t*(B[1]-A[1]),NR]}
+           else if(B[2]>NR){const t=(NR-B[2])/(A[2]-B[2]);B=[B[0]+t*(A[0]-B[0]),B[1]+t*(A[1]-B[1]),NR]}
+           const p=pr(A),q=pr(B);g.moveTo(p[0],p[1]);g.lineTo(q[0],q[1])}
+          function poly(pts,fill,stroke){const d=pts.map(toDev);if(d.some(v=>v[2]>NR))return;g.beginPath();d.forEach((v,i)=>{const p=pr(v);i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])});g.closePath();if(fill){g.fillStyle=fill;g.fill()}if(stroke){g.strokeStyle=stroke;g.lineWidth=3;g.stroke()}}
+          function circ(cx,cy,z,r,n){const a=[];for(let i=0;i<n;i++)a.push([cx+r*Math.cos(i*6.2832/n),cy+r*Math.sin(i*6.2832/n),z]);return a}
+          const LV=[0.3,0.4,0.85],LN=Math.hypot(...LV);
+          function box(fa,c,ex,ey,s,col){const ax=[[ex[0],ex[1],0],[ey[0],ey[1],0],[0,0,1]],h=[s[0]/2,s[1]/2,s[2]/2];
+           for(let k=0;k<3;k++)for(const sg of[-1,1]){const u=(k+1)%3,v=(k+2)%3,n=ax[k].map(x=>x*sg),pts=[];
+            for(const[a,b]of[[1,1],[-1,1],[-1,-1],[1,-1]])pts.push([0,1,2].map(i=>c[i]+n[i]*h[k]+ax[u][i]*a*h[u]+ax[v][i]*b*h[v]));
+            fa.push({pts,n,col})}}
+          function chFaces(){const fa=[],ey=[-Math.sin(ch.yaw),Math.cos(ch.yaw)],ex=[ey[1],-ey[0]],sw=Math.sin(ch.ph)*0.12;
+           const P=(lx,ly,lz)=>[ch.x+ex[0]*lx+ey[0]*ly,ch.y+ex[1]*lx+ey[1]*ly,-hh+lz];
+           const B=[60,70,160],T=[230,90,40],S=[240,200,160];
+           for(const p of[[-0.1,sw,0.225,.12,.12,.45,B],[0.1,-sw,0.225,.12,.12,.45,B],[0,0,0.7,.38,.2,.5,T],[-0.26,-sw,0.72,.1,.1,.45,S],[0.26,sw,0.72,.1,.1,.45,S],[0,0,1.08,.26,.26,.26,S],[0,0.135,1.1,.18,.02,.06,[20,20,20]]])
+            box(fa,P(p[0],p[1],p[2]),ex,ey,[p[3],p[4],p[5]],p[6]);return fa}
+          function draw(){
+           g.clearRect(0,0,W,H);
+           g.beginPath();g.strokeStyle='rgba(255,255,255,0.4)';g.lineWidth=1.5;
+           for(let i=-8;i<=8;i++){seg([i*0.5,-4,-hh],[i*0.5,4,-hh]);seg([-4,i*0.5,-hh],[4,i*0.5,-hh])}
+           g.stroke();
+           const dz=-M[8];if(dz<-0.05){const t=-hh/dz;poly(circ(t*-M[2],t*-M[5],-hh,0.2,20),null,'#ff0')}
+           if(ch){poly(circ(ch.x,ch.y,-hh,0.28,16),'rgba(0,0,0,0.35)',null);
+            const fa=chFaces();
+            for(const q of fa){const c=[0,1,2].map(i=>(q.pts[0][i]+q.pts[2][i])/2);q.vis=q.n[0]*c[0]+q.n[1]*c[1]+q.n[2]*c[2]<0;q.dep=c[0]*c[0]+c[1]*c[1]+c[2]*c[2]}
+            fa.filter(q=>q.vis).sort((a,b)=>b.dep-a.dep).forEach(q=>{const sh=0.45+0.55*Math.max(0,(q.n[0]*LV[0]+q.n[1]*LV[1]+q.n[2]*LV[2])/LN);
+             poly(q.pts,'rgb('+q.col.map(x=>Math.round(x*sh)).join(',')+')','rgba(0,0,0,0.25)')})}
+           const j=jc();g.globalAlpha=0.35;g.fillStyle='#fff';g.beginPath();g.arc(j.x,j.y,j.r,0,7);g.fill();
+           g.globalAlpha=0.7;g.beginPath();g.arc(j.x+joy.kx*j.r,j.y+joy.ky*j.r,j.r*0.4,0,7);g.fill();g.globalAlpha=1;
+           g.font='bold '+H*0.022+'px sans-serif';g.textAlign='center';
+           for(const b of bt()){g.fillStyle='rgba(0,0,0,0.55)';g.fillRect(b.x,b.y,b.w,b.h);g.fillStyle='#fff';g.fillText(b.t,b.x+b.w/2,b.y+b.h*0.65)}
+           g.fillStyle='#fff';g.shadowColor='#000';g.shadowBlur=6;
+           if(msg)g.fillText(msg,W/2,H*0.14);
+           if(!ch)g.fillText('Arahkan ke lantai, lalu ketuk untuk menaruh karakter',W/2,H*0.2);
+           g.fillText('Tinggi HP dari lantai: '+hh.toFixed(1)+' m',W/2,H*0.95);g.shadowBlur=0}
+          function jc(){return{x:W*0.2,y:H*0.8,r:W*0.14}}
+          function bt(){const w=W*0.29,h=H*0.055,y=H*0.04;return[{t:'↺ Reset arah',x:W*0.03,y,w,h,a:resetHeading},{t:'Tinggi HP −',x:W*0.355,y,w,h,a:()=>{hh=Math.max(0.5,hh-0.1)}},{t:'Tinggi HP +',x:W*0.68,y,w,h,a:()=>{hh=Math.min(2.5,hh+0.1)}}]}
+          function jset(t){const j=jc();let dx=(t.clientX-j.x)/j.r,dy=(t.clientY-j.y)/j.r;const m=Math.hypot(dx,dy);if(m>1){dx/=m;dy/=m}joy.kx=dx;joy.ky=dy;joy.dx=dx;joy.dy=-dy}
+          function place(x,y){const d=[(x-W/2)/f,-(y-H/2)/f,-1],w=[0,1,2].map(i=>M[3*i]*d[0]+M[3*i+1]*d[1]+M[3*i+2]*d[2]);if(w[2]>-0.05)return;const t=-hh/w[2];ch=ch||{yaw:0,ph:0};ch.x=t*w[0];ch.y=t*w[1]}
+          cv.addEventListener('touchstart',e=>{e.preventDefault();for(const t of e.changedTouches){const j=jc();
+           if(Math.hypot(t.clientX-j.x,t.clientY-j.y)<j.r*1.4){joy.id=t.identifier;jset(t);continue}
+           let hit=false;for(const b of bt())if(t.clientX>b.x&&t.clientX<b.x+b.w&&t.clientY>b.y&&t.clientY<b.y+b.h){b.a();hit=true}
+           if(!hit)place(t.clientX,t.clientY)}},{passive:false});
+          cv.addEventListener('touchmove',e=>{e.preventDefault();for(const t of e.changedTouches)if(t.identifier===joy.id)jset(t)},{passive:false});
+          function te(e){for(const t of e.changedTouches)if(t.identifier===joy.id){joy.id=null;joy.dx=joy.dy=joy.kx=joy.ky=0}}
+          cv.addEventListener('touchend',te);cv.addEventListener('touchcancel',te);
+          let last=0;
+          function fr(ts){const dt=Math.min(.05,(ts-last)/1000||.016);last=ts;
+           if(ch&&(joy.dx||joy.dy)){let fx=-M[2],fy=-M[5],n=Math.hypot(fx,fy);if(n<0.2){fx=M[1];fy=M[4];n=Math.hypot(fx,fy)||1}fx/=n;fy/=n;
+            const mx=fx*joy.dy+fy*joy.dx,my=fy*joy.dy-fx*joy.dx,m=Math.hypot(mx,my);
+            ch.x+=mx*1.2*dt;ch.y+=my*1.2*dt;ch.yaw=Math.atan2(-mx,my);ch.ph+=m*dt*9}
+           draw();requestAnimationFrame(fr)}
+          requestAnimationFrame(fr);
+          </script></body></html>
+          __EOF__
+          mkdir -p app/src/main/java/com/arpalsu/game
+          cat > app/src/main/java/com/arpalsu/game/MainActivity.kt <<'__EOF__'
+          package com.arpalsu.game
+
+          import android.Manifest
+          import android.annotation.SuppressLint
+          import android.app.Activity
+          import android.content.pm.ActivityInfo
+          import android.content.pm.PackageManager
+          import android.hardware.Sensor
+          import android.hardware.SensorEvent
+          import android.hardware.SensorEventListener
+          import android.hardware.SensorManager
+          import android.os.Bundle
+          import android.view.View
+          import android.view.WindowManager
+          import android.webkit.PermissionRequest
+          import android.webkit.WebChromeClient
+          import android.webkit.WebView
+          import android.widget.Toast
+
+          class MainActivity : Activity(), SensorEventListener {
+              private lateinit var wv: WebView
+              private var sm: SensorManager? = null
+              private var rot: Sensor? = null
+              private val mat = FloatArray(9)
+
+              @SuppressLint("SetJavaScriptEnabled")
+              override fun onCreate(b: Bundle?) {
+                  super.onCreate(b)
+                  requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  @Suppress("DEPRECATION")
+                  window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+                      View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                  wv = WebView(this)
+                  wv.settings.javaScriptEnabled = true
+                  wv.settings.mediaPlaybackRequiresUserGesture = false
+                  wv.webChromeClient = object : WebChromeClient() {
+                      override fun onPermissionRequest(request: PermissionRequest) {
+                          runOnUiThread { request.grant(request.resources) }
+                      }
+                  }
+                  setContentView(wv)
+                  sm = getSystemService(SENSOR_SERVICE) as SensorManager
+                  rot = sm?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
+                      ?: sm?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+                  if (rot == null) Toast.makeText(this, "HP ini tidak punya sensor rotasi", Toast.LENGTH_LONG).show()
+                  if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) load()
+                  else requestPermissions(arrayOf(Manifest.permission.CAMERA), 1)
+              }
+
+              private fun load() {
+                  val html = assets.open("index.html").bufferedReader().readText()
+                  wv.loadDataWithBaseURL("https://ar.local/", html, "text/html", "utf-8", null)
+              }
+
+              override fun onRequestPermissionsResult(rc: Int, p: Array<out String>, r: IntArray) {
+                  load()
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  rot?.let { sm?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+              }
+
+              override fun onPause() {
+                  super.onPause()
+                  sm?.unregisterListener(this)
+              }
+
+              override fun onSensorChanged(e: SensorEvent) {
+                  SensorManager.getRotationMatrixFromVector(mat, e.values)
+                  wv.evaluateJavascript("setRot(" + mat.joinToString(",") + ")", null)
+              }
+
+              override fun onAccuracyChanged(s: Sensor?, a: Int) {}
+          }
+          __EOF__
+          cat > build.gradle.kts <<'__EOF__'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          __EOF__
+          cat > gradle.properties <<'__EOF__'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=false
+          __EOF__
+          cat > settings.gradle.kts <<'__EOF__'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "ARPalsu"
+          include(":app")
+          __EOF__
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - run: gradle assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ARPalsu-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
